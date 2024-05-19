@@ -83,7 +83,7 @@ python tools/generate_seg_tusimple.py --root $TUSIMPLEROOT
 
 ## Getting Started
 
-[assets]: https://github.com/wei042/CLRKD_testonly/releases
+[assets]: https://github.com/weiqingq/CLRKDNet/releases
 
 ### CULane
 
