@@ -1,4 +1,11 @@
 <div align="center">
+  
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/clrkdnet-speeding-up-lane-detection-with/lane-detection-on-culane)](https://paperswithcode.com/sota/lane-detection-on-culane?p=clrkdnet-speeding-up-lane-detection-with)
+
+</div>
+
+
+<div align="center">
 
 # CLRKDNet: Speeding up Lane Detection with Knowledge Distillation
 
