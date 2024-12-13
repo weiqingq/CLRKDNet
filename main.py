@@ -61,16 +61,20 @@ def parse_args():
             default=None,
             help='the checkpoint file to resume from')
     parser.add_argument('--view', action='store_true', help='whether to view')
-    parser.add_argument('--validate', action='store_true',
+    parser.add_argument(
+        '--validate',
+        action='store_true',
         help='whether to evaluate the checkpoint during training')
-    parser.add_argument('--test', action='store_true',
+    parser.add_argument(
+        '--test',
+        action='store_true',
         help='whether to test the checkpoint on testing set')
     parser.add_argument('--gpus', nargs='+', type=int, default='0')
     parser.add_argument('--seed', type=int, default=0, help='random seed')
-    parser.add_argument('--distillation', action='store_true', help='whether to use distillation during training')
-    parser.add_argument('--teacher_model_cfg', help='teacher config file path')
+    parser.add_argument('--distillation', action='store_true', help='whether to use distillation')
     parser.add_argument('--teacher_model_path', default=None,
-                        help='the teacher model file to load from')
+                        help='the teacher file to load from')
+    parser.add_argument('--teacher_model_cfg', help='teacher config file path')
     args = parser.parse_args()
 
     return args

@@ -176,8 +176,7 @@ class CLRHead(nn.Module):
             nn.init.constant_(self.prior_embeddings.weight[i, 2],
                               0.68 if i % 2 == 0 else 0.84)
 
-    # forward function here
-    def forward(self, x, **kwargs):
+    def forward(self, x, attention = False, **kwargs):
         '''
         Take pyramid features as input to perform Cross Layer Refinement and finally output the prediction lanes.
         Each feature is a 4D tensor.
@@ -187,7 +186,7 @@ class CLRHead(nn.Module):
             prediction_list: each layer's prediction result
             seg: segmentation result for auxiliary loss
         '''
-
+        # import pdb; pdb.set_trace()
         batch_features = list(x[len(x) - self.refine_layers:])
         batch_features.reverse()
         batch_size = batch_features[-1].shape[0]
@@ -203,6 +202,8 @@ class CLRHead(nn.Module):
 
         # iterative refine
         prior_features_stages = []
+        fc_logits  = []
+        priors_att = []
         for stage in range(self.refine_layers):
             num_priors = priors_on_featmap.shape[1]
             prior_xs = torch.flip(priors_on_featmap, dims=[2])
@@ -213,6 +214,11 @@ class CLRHead(nn.Module):
 
             fc_features = self.roi_gather(prior_features_stages,
                                           batch_features[stage], stage)
+            # pdb.set_trace()
+            if stage == self.refine_layers-1:
+                fc_logits.append(fc_features)
+
+            # fc_logits.append(fc_features)
 
             fc_features = fc_features.view(num_priors, batch_size, -1).reshape(batch_size * num_priors, self.fc_hidden_dim)
 
@@ -254,8 +260,37 @@ class CLRHead(nn.Module):
             if stage != self.refine_layers - 1:
                 priors = prediction_lines.detach().clone()
                 priors_on_featmap = priors[..., 6 + self.sample_x_indexs]
+                # priors_att.append(priors[..., 2:5])
+            
+        # priors_att.append(priors[..., 2:5])
 
-        return predictions_lists[-1]
+        if stage == self.refine_layers - 1:
+            priors_att.append(priors[..., 2:5])
+
+        if self.training:
+            seg = None
+            seg_features = torch.cat([
+                F.interpolate(feature,
+                              size=[
+                                  batch_features[-1].shape[2],
+                                  batch_features[-1].shape[3]
+                              ],
+                              mode='bilinear',
+                              align_corners=False)
+                for feature in batch_features
+            ],
+                                     dim=1)
+            seg = self.seg_decoder(seg_features)
+            output = {'predictions_lists': predictions_lists, 'seg': seg}
+            if attention:
+                return self.loss(output, kwargs['batch']), fc_logits, priors_att
+            else:
+                return self.loss(output, kwargs['batch'])
+        
+        if attention:
+            return predictions_lists[-1], fc_logits, priors_att
+        else:
+            return predictions_lists[-1]
 
     def predictions_to_pred(self, predictions):
         '''
@@ -298,6 +333,128 @@ class CLRHead(nn.Module):
                         })
             lanes.append(lane)
         return lanes
+    
+
+    def loss(self,
+             output,
+             batch,
+             cls_loss_weight=2.,
+             xyt_loss_weight=0.5,
+             iou_loss_weight=2.,
+             seg_loss_weight=1.):
+        if self.cfg.haskey('cls_loss_weight'):
+            cls_loss_weight = self.cfg.cls_loss_weight
+        if self.cfg.haskey('xyt_loss_weight'):
+            xyt_loss_weight = self.cfg.xyt_loss_weight
+        if self.cfg.haskey('iou_loss_weight'):
+            iou_loss_weight = self.cfg.iou_loss_weight
+        if self.cfg.haskey('seg_loss_weight'):
+            seg_loss_weight = self.cfg.seg_loss_weight
+
+        predictions_lists = output['predictions_lists']
+        targets = batch['lane_line'].clone()
+        cls_criterion = FocalLoss(alpha=0.25, gamma=2.)
+        cls_loss = 0
+        reg_xytl_loss = 0
+        iou_loss = 0
+        cls_acc = []
+
+        cls_acc_stage = []
+        for stage in range(self.refine_layers):
+            predictions_list = predictions_lists[stage]
+            for predictions, target in zip(predictions_list, targets):
+                target = target[target[:, 1] == 1]
+
+                if len(target) == 0:
+                    # If there are no targets, all predictions have to be negatives (i.e., 0 confidence)
+                    cls_target = predictions.new_zeros(predictions.shape[0]).long()
+                    cls_pred = predictions[:, :2]
+                    cls_loss = cls_loss + cls_criterion(
+                        cls_pred, cls_target).sum()
+                    continue
+
+                with torch.no_grad():
+                    matched_row_inds, matched_col_inds = assign(
+                        predictions, target, self.img_w, self.img_h)
+
+                # classification targets
+                cls_target = predictions.new_zeros(predictions.shape[0]).long()
+                cls_target[matched_row_inds] = 1
+                cls_pred = predictions[:, :2]
+
+                # regression targets -> [start_y, start_x, theta] (all transformed to absolute values), only on matched pairs
+                reg_yxtl = predictions[matched_row_inds, 2:6]
+                reg_yxtl[:, 0] *= self.n_strips
+                reg_yxtl[:, 1] *= (self.img_w - 1)
+                reg_yxtl[:, 2] *= 180
+                reg_yxtl[:, 3] *= self.n_strips
+
+                target_yxtl = target[matched_col_inds, 2:6].clone()
+
+                # regression targets -> S coordinates (all transformed to absolute values)
+                reg_pred = predictions[matched_row_inds, 6:]
+                reg_pred *= (self.img_w - 1)
+                reg_targets = target[matched_col_inds, 6:].clone()
+
+                with torch.no_grad():
+                    predictions_starts = torch.clamp(
+                        (predictions[matched_row_inds, 2] *
+                         self.n_strips).round().long(), 0,
+                        self.n_strips)  # ensure the predictions starts is valid
+                    target_starts = (target[matched_col_inds, 2] *
+                                     self.n_strips).round().long()
+                    target_yxtl[:, -1] -= (predictions_starts - target_starts
+                                           )  # reg length
+
+                # Loss calculation
+                cls_loss = cls_loss + cls_criterion(cls_pred, cls_target).sum(
+                ) / target.shape[0]
+
+                target_yxtl[:, 0] *= self.n_strips
+                target_yxtl[:, 2] *= 180
+                reg_xytl_loss = reg_xytl_loss + F.smooth_l1_loss(
+                    reg_yxtl, target_yxtl,
+                    reduction='none').mean()
+
+                iou_loss = iou_loss + liou_loss(
+                    reg_pred, reg_targets,
+                    self.img_w, length=15)
+
+                # calculate acc
+                cls_accuracy = accuracy(cls_pred, cls_target)
+                cls_acc_stage.append(cls_accuracy)
+
+            if len(cls_acc_stage) != 0:
+                cls_acc.append(sum(cls_acc_stage) / len(cls_acc_stage))
+            else:
+                cls_acc.append(0)
+
+        # extra segmentation loss
+        seg_loss = self.criterion(F.log_softmax(output['seg'], dim=1),
+                             batch['seg'].long())
+
+        cls_loss /= (len(targets) * self.refine_layers)
+        reg_xytl_loss /= (len(targets) * self.refine_layers)
+        iou_loss /= (len(targets) * self.refine_layers)
+
+        loss = cls_loss * cls_loss_weight + reg_xytl_loss * xyt_loss_weight \
+            + seg_loss * seg_loss_weight + iou_loss * iou_loss_weight
+
+        return_value = {
+            'loss': loss,
+            'loss_stats': {
+                'loss': loss,
+                'cls_loss': cls_loss * cls_loss_weight,
+                'reg_xytl_loss': reg_xytl_loss * xyt_loss_weight,
+                'seg_loss': seg_loss * seg_loss_weight,
+                'iou_loss': iou_loss * iou_loss_weight
+            }
+        }
+
+        for i in range(self.refine_layers):
+            return_value['loss_stats']['stage_{}_acc'.format(i)] = cls_acc[i]
+
+        return return_value
 
     def get_lanes(self, output, as_lanes=True):
         '''

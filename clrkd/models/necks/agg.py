@@ -15,12 +15,14 @@ class Aggregator(nn.Module):
                  norm_cfg=None,
                  act_cfg=None,
                  upsample_cfg=dict(mode='nearest'),
+                 attention=False,
                  cfg = None):
         super(Aggregator, self).__init__()
         assert isinstance(in_channels, list) and len(in_channels) == 1
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.upsample_cfg = upsample_cfg.copy()
+        self.attention = attention
 
         # Initialize lateral and Aggregator convolution layers
         self.lateral_convs = nn.ModuleList()
@@ -57,5 +59,5 @@ class Aggregator(nn.Module):
         laterals = [self.lateral_convs[i](input_tensor) for i in range(len(self.in_channels))]
         output = self.fpn_convs[0](laterals[0])
 
-        return [output]
+        return (output,)
 

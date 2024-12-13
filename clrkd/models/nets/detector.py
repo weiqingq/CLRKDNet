@@ -17,13 +17,27 @@ class Detector(nn.Module):
     def get_lanes(self):
         return self.heads.get_lanes(output)
 
-    def forward(self, batch):
+    def forward(self, batch, attention = False):
         output = {}
 
-        fea = self.backbone(batch['img'] if isinstance(batch, dict) else batch)
+        if attention:
+            fea, att_maps = self.backbone(batch['img'] if isinstance(batch, dict) else batch, attention)
+        else:
+            fea = self.backbone(batch['img'] if isinstance(batch, dict) else batch)
 
         if self.neck:
             fea = self.neck(fea)
 
-        output = self.heads(fea)
-        return output
+
+        # import pdb; pdb.set_trace()
+        if attention:
+            output, logits_att, priors_att = self.heads(fea, attention, batch=batch)
+        elif self.training:
+            output = self.heads(fea, batch=batch)
+        else:
+            output = self.heads(fea)
+
+        if attention:
+            return output, att_maps, logits_att, priors_att
+        else:
+            return output
