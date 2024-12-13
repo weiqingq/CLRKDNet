@@ -94,10 +94,35 @@ python tools/generate_seg_tusimple.py --root $TUSIMPLEROOT
 
 ### CULane
 
-|   Backbone  | F1@50 |
-| :---  |  :---:  |  
-| [ResNet-18][assets]     |  79.66   |
-| [DLA-34][assets]     |  80.68  |
+|   Backbone  | F1@50 | Log 
+| :---  |  :---   |  :---:
+| [ResNet-18][assets]     |  79.66  | [resnet18 log](https://github.com/weiqingq/CLRKDNet/releases/download/training_logs/resnet18_distill_log.txt)
+| [DLA-34][assets]     |  80.68  | [dla34 log](https://github.com/weiqingq/CLRKDNet/releases/download/training_logs/dla34_distillation_log.txt)
+
+
+### Train
+
+To train CLRKDNet, ensure that you have the teacher model's weights (from CLRNet) and verify that the teacher model's configuration file matches the provided weights. Start training with the following command:
+```Shell
+python main.py [configs/path_to_your_config] --gpus [gpu_id] --distillation --teacher_model_cfg [teacher model config] --teacher_model_path [teacher model weight]
+```
+
+Example Commands
+To train CLRKDNet ResNet18, use:
+```Shell
+python main.py configs/ResNet18_CULane.py --gpus 0 --distillation --teacher_model_cfg configs/Resnet_teacher.py --teacher_model_path culane_r101.pth
+```
+
+To train CLRKDNet DLA34, use:
+```Shell
+python main.py configs/DLA_CULane.py --gpus 0 --distillation --teacher_model_cfg configs/dla_teacher.py --teacher_model_path dla34_8087.pth
+```
+
+
+#### Notes on DLA34 Training
+For the DLA34 model, as stated in our paper, we reran the original CLRNet code while applying a similarity image removal strategy. This approach yielded an F1 score of 80.87. Our distilled model, CLRKDNet, achieves a comparable F1 score of 80.71. [Training log](https://github.com/weiqingq/CLRKDNet/releases/download/training_logs/dla_CLRNet_rerun_log.txt) and [weight](https://github.com/weiqingq/CLRKDNet/releases/download/training_logs/dla34_8087.pth) for the new DLA34 model.
+
+
 
 ### Validation
 For testing, run
