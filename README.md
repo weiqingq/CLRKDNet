@@ -100,6 +100,8 @@ python tools/generate_seg_tusimple.py --root $TUSIMPLEROOT
 | [DLA-34][assets]     |  80.68  | [dla34 log](https://github.com/weiqingq/CLRKDNet/releases/download/training_logs/dla34_distillation_log.txt)
 
 
+Please use the npz file [[here]](https://github.com/hirotomusiker/CLRerNet/releases/download/v0.2.0/train_diffs.npz). Thanks to Hiroto for their work. 
+
 ### Train
 
 To train CLRKDNet, ensure that you have the teacher model's weights (from CLRNet) and verify that the teacher model's configuration file matches the provided weights. Start training with the following command:
@@ -167,6 +169,7 @@ python sample_speed.py --config configs/DLA_CULane.py --load_from DLA34_CULane.p
 ## Acknowledgement
 <!--ts-->
 * [Turoad/CLRNet](https://github.com/Turoad/CLRNet)
+* [hirotomusiker/CLRerNet](https://github.com/hirotomusiker/CLRerNet)
 * [open-mmlab/mmdetection](https://github.com/open-mmlab/mmdetection)
 * [pytorch/vision](https://github.com/pytorch/vision)
 * [Turoad/lanedet](https://github.com/Turoad/lanedet)
